@@ -98,7 +98,7 @@ function handleController(controller, scene, hand) {
 		raySpace.add(blasterGroupForHand);
 		mesh.visible = false;
 	}
-	if (gamepad.getButton(XR_BUTTONS.TRIGGER)) {
+	if (gamepad.getButtonClick(XR_BUTTONS.TRIGGER)) {
 		try {
 			
 			gamepad.getHapticActuator(0).pulse(0.6, 100);
