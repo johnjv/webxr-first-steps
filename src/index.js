@@ -15,10 +15,11 @@ import { init } from './init.js';
 
 const bullets = {};
 const forwardVector = new THREE.Vector3(0, 0, -1);
-const bulletSpeed = 10;
+const bulletSpeed = 40;
 const bulletTimeToLive = 1;
 
-const blasterGroup = new THREE.Group();
+const blasterGroupRight = new THREE.Group();
+const blasterGroupLeft = new THREE.Group();
 const targets = [];
 
 let score = 0;
@@ -47,7 +48,8 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 	});
 
 	gltfLoader.load('assets/blaster.glb', (gltf) => {
-		blasterGroup.add(gltf.scene);
+		blasterGroupRight.add(gltf.scene);
+		blasterGroupLeft.add(gltf.scene.clone());
 	});
 
 	gltfLoader.load('assets/target.glb', (gltf) => {
@@ -76,7 +78,8 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 	laserSound = new THREE.PositionalAudio(listener);
 	audioLoader.load('assets/laser.ogg', (buffer) => {
 		laserSound.setBuffer(buffer);
-		blasterGroup.add(laserSound);
+		blasterGroupRight.add(laserSound);
+		blasterGroupLeft.add(laserSound);
 	});
 
 	scoreSound = new THREE.PositionalAudio(listener);
@@ -86,45 +89,56 @@ function setupScene({ scene, camera, renderer, player, controllers }) {
 	});
 }
 
+function handleController(controller, scene, hand) {
+	const { gamepad, raySpace, mesh } = controller;
+	const blasterGroupForHand =
+		hand === 'right' ? blasterGroupRight : blasterGroupLeft;
+
+	if (!raySpace.children.includes(blasterGroupForHand)) {
+		raySpace.add(blasterGroupForHand);
+		mesh.visible = false;
+	}
+	if (gamepad.getButton(XR_BUTTONS.TRIGGER)) {
+		try {
+			
+			gamepad.getHapticActuator(0).pulse(0.6, 100);
+		} catch {
+			// do nothing
+		}
+
+		// Play laser sound
+		if (laserSound.isPlaying) laserSound.stop();
+		laserSound.play();
+
+		const bulletPrototype = blasterGroupForHand.getObjectByName('bullet');
+		if (bulletPrototype) {
+			const bullet = bulletPrototype.clone();
+			scene.add(bullet);
+			bulletPrototype.getWorldPosition(bullet.position);
+			bulletPrototype.getWorldQuaternion(bullet.quaternion);
+
+			const directionVector = forwardVector
+				.clone()
+				.applyQuaternion(bullet.quaternion);
+			bullet.userData = {
+				velocity: directionVector.multiplyScalar(bulletSpeed),
+				timeToLive: bulletTimeToLive,
+			};
+			bullets[bullet.uuid] = bullet;
+		}
+	}
+}
+
 function onFrame(
 	delta,
 	time,
 	{ scene, camera, renderer, player, controllers },
 ) {
 	if (controllers.right) {
-		const { gamepad, raySpace, mesh } = controllers.right;
-		if (!raySpace.children.includes(blasterGroup)) {
-			raySpace.add(blasterGroup);
-			mesh.visible = false;
-		}
-		if (gamepad.getButtonClick(XR_BUTTONS.TRIGGER)) {
-			try {
-				gamepad.getHapticActuator(0).pulse(0.6, 100);
-			} catch {
-				// do nothing
-			}
-
-			// Play laser sound
-			if (laserSound.isPlaying) laserSound.stop();
-			laserSound.play();
-
-			const bulletPrototype = blasterGroup.getObjectByName('bullet');
-			if (bulletPrototype) {
-				const bullet = bulletPrototype.clone();
-				scene.add(bullet);
-				bulletPrototype.getWorldPosition(bullet.position);
-				bulletPrototype.getWorldQuaternion(bullet.quaternion);
-
-				const directionVector = forwardVector
-					.clone()
-					.applyQuaternion(bullet.quaternion);
-				bullet.userData = {
-					velocity: directionVector.multiplyScalar(bulletSpeed),
-					timeToLive: bulletTimeToLive,
-				};
-				bullets[bullet.uuid] = bullet;
-			}
-		}
+		handleController(controllers.right, scene, 'right');
+	}
+	if (controllers.left) {
+		handleController(controllers.left, scene, 'left');
 	}
 
 	Object.values(bullets).forEach((bullet) => {
